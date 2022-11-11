@@ -14,14 +14,26 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, re_path
 from perfume_shop import views
 from rest_framework.authtoken.views import obtain_auth_token
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('men_perfume/', views.men_perfume, name='men_perfume'),
     path('signup/', views.signup),
-    path('login/', views.login)
+    path('login/', views.login),
+    path('dummy/', views.dummy_fixer),
+    path('brands/', views.brands),
+    path('perfumes/', views.PerfumeListView.as_view()),
+    path('rater/', views.temp_rater),
+    path('cart/', views.cart),
 
-]
+
+    # re_path('^perfumes/(?P<username>.+)/$', views.PerfumeListView.as_view()),
+
+
+
+]+static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

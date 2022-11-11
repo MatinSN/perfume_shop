@@ -3,16 +3,31 @@ import email
 from pyexpat import model
 from tkinter.ttk import Style
 from rest_framework import serializers
-from .models import Perfume
+from .models import Perfume, Brand, PerfumeBottle,Cart
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 
 
+class BrandSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Brand
+        fields = '__all__'
+
+
 class PerfumeSerializer(serializers.ModelSerializer):
+    brand = BrandSerializer(many=False)
 
     class Meta:
         model = Perfume
+        fields = '__all__'
+
+
+class PerfumeBottleSerializer(serializers.ModelSerializer):
+    perfume = PerfumeSerializer(many=False)
+
+    class Meta:
+        model = PerfumeBottle
         fields = '__all__'
 
 
@@ -54,12 +69,12 @@ class LoinSerializer(serializers.ModelSerializer):
             'password': {'write_only': True}
         }
 
-
     def save(self):
         print(self.validated_data['username'])
         user = authenticate(
             username=self.validated_data['username'], password=self.validated_data['password'])
         if user is not None:
+            Cart.objects.create(user=user)
             raise serializers.ValidationError(
                 {'credentials': 'email or password is incorrect'})
         else:
