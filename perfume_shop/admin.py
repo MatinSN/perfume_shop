@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Perfume, PerfumeBottle, Brand, Cart, CartProduct, Rating
+from .models import Perfume, PerfumeBottle, Brand, Cart, CartProduct, Rating, Detail
 
 
 admin.site.register(Perfume)
@@ -8,3 +8,4 @@ admin.site.register(Brand)
 admin.site.register(Cart)
 admin.site.register(CartProduct)
 admin.site.register(Rating)
+admin.site.register(Detail)

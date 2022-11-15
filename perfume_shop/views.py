@@ -19,6 +19,9 @@ from perfume_shop import serializer
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.generics import ListAPIView
 
+import json
+
+
 def temp(x):
     if x.perfume.sex == "female":
         return True
@@ -93,6 +96,18 @@ def men_perfume(request):
     return JsonResponse(serializer.data, safe=False)
 
 
+@api_view(["GET"])
+@permission_classes([])
+def get_perfume(request, id):
+
+
+    perfume = PerfumeBottle.objects.get(id=id)
+   
+
+    serializer = PerfumeBottleSerializer(perfume, many=False)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 @api_view(["POST"])
 @permission_classes([])
 def signup(request):
@@ -164,6 +179,7 @@ class PerfumeListView(ListAPIView):
         price_sort_ace = self.request.query_params.get('price_sort_ace')
         date_sort = self.request.query_params.get('date_sort')
         count = self.request.query_params.get('count')
+        rate_sort = self.request.query_params.get('rate_sort')
 
         if count is not None:
             count = int(count)
@@ -176,7 +192,7 @@ class PerfumeListView(ListAPIView):
             elif tester == "true":
                 perfumes = perfumes.filter(tester=True)
 
-        if gender is not None:
+        if gender is not None and (gender == "Male" or gender == "Female"):
             perfumes = perfumes.filter(
                 perfume__gender=gender)
 
@@ -191,14 +207,14 @@ class PerfumeListView(ListAPIView):
             perfumes = perfumes.filter(
                 Q(perfume__name__contains=search) | Q(perfume__brand__name__contains=search))
 
-        if price_sort_dec is not None:
-            if price_sort_dec == "true":
-                perfumes = perfumes.order_by("-price")
-        elif price_sort_ace is not None:
-            if price_sort_ace == "true":
-                perfumes = perfumes.order_by("price")
-        elif date_sort is not None:
-            if date_sort == "true":
-                perfumes = perfumes.order_by("-created_at")
+        if price_sort_dec is not None and price_sort_dec == "true":
+            perfumes = perfumes.order_by("-price")
+        elif price_sort_ace is not None and price_sort_ace == "true":
+            perfumes = perfumes.order_by("price")
+        elif date_sort is not None and date_sort == "true":
+            perfumes = perfumes.order_by("-created_at")
+        elif rate_sort is not None and rate_sort == "true":
+            print("Here of the rate sort")
+            perfumes = perfumes.order_by("-rate")
 
         return perfumes

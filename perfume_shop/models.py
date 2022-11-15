@@ -38,9 +38,18 @@ class Perfume(models.Model):
     brand = models.ForeignKey(Brand, on_delete=models.CASCADE, null=True)
     image = models.ImageField(upload_to='perfumes',
                               default='perfumes/p1.jpg')
+    image2 = models.ImageField(upload_to='perfumes',
+                               default='perfumes/p1.jpg')
 
     def __str__(self):
         return self.name
+
+
+class Detail(models.Model):
+    title = models.CharField(max_length=30)
+    description = models.CharField(max_length=1000)
+    perfume = models.ForeignKey(
+        Perfume, related_name='details', on_delete=models.CASCADE)
 
 
 class PerfumeBottle(models.Model):
