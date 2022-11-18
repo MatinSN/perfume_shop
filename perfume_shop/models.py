@@ -20,8 +20,15 @@ GENDER_TYPES = (
     ('Both', 'Both')
 )
 
+PAID_ITEMS_STATUS = (
+    ("Processing", "Processing"),
+    ("Sent", "Send"),
+    ("Received", "Received")
+)
+
 
 class Brand(models.Model):
+
     category = models.CharField(max_length=20, choices=BRAND_CATEGORY_CHOICES)
     name = models.CharField(max_length=30)
     image = models.ImageField(upload_to='brands',
@@ -77,25 +84,26 @@ def create_auth_token(sender, instance=None, created=False, **kwargs):
 
 
 class Cart(models.Model):
-    user = models.ForeignKey(User,
-                             on_delete=models.CASCADE)
-    products = models.ManyToManyField(
-        PerfumeBottle,
-        related_name='carts',
-        through='CartProduct'
-    )
+    user = models.OneToOneField(User,
+                                on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.user.username
 
 
 class CartProduct(models.Model):
-    product = models.ForeignKey(PerfumeBottle, on_delete=models.CASCADE)
-    cart = models.ForeignKey(Cart, on_delete=models.CASCADE)
+    product = models.ForeignKey(
+        PerfumeBottle, on_delete=models.CASCADE)
+    cart = models.ForeignKey(
+        Cart, related_name="cart_products", on_delete=models.CASCADE)
     quantity = models.IntegerField(default=1)
 
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['product', 'cart'], name='unique_product_cart')
-        ]
+    def __str__(self):
+        return self.cart.user.username
+
+
+# class PaidProducts(models.Model):
+#     products = models.ManyToManyField(CartProduct)
 
 
 class Rating(models.Model):
@@ -107,3 +115,14 @@ class Rating(models.Model):
 
     def __str__(self):
         return self.user.username
+
+
+class PaymentsTrackId(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    trackId = models.BigIntegerField()
+
+
+class PaidItem(models.Model):
+    payment = models.ForeignKey(PaymentsTrackId, on_delete=models.CASCADE)
+    product = models.ForeignKey(PerfumeBottle, on_delete=models.CASCADE)
+    status = models.CharField(max_length=30, choices=PAID_ITEMS_STATUS)

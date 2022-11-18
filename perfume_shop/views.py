@@ -1,8 +1,8 @@
 from distutils.log import error
 from lib2to3.pgen2 import token
 from django.http import JsonResponse
-from .models import Perfume, PerfumeBottle, Brand, Rating, CartProduct, Cart
-from .serializer import PerfumeSerializer, UserSerializer, LoinSerializer, BrandSerializer, PerfumeBottleSerializer
+from .models import Perfume, PerfumeBottle, Brand, Rating, Cart, CartProduct, PaymentsTrackId
+from .serializer import PerfumeSerializer, UserSerializer, LoinSerializer, BrandSerializer, PerfumeBottleSerializer, CartSerializer
 from .helpers import men_filter
 import operator
 from rest_framework.response import Response
@@ -20,6 +20,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.generics import ListAPIView
 
 import json
+import math
+import requests
 
 
 def temp(x):
@@ -34,11 +36,70 @@ def temp(x):
 def cart(request):
     cart = Cart.objects.filter(user=request.user)
     if request.method == "GET":
-        print(cart.cart_products)
+        serializer = CartSerializer(cart[0], many=False)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     elif request.method == "PUT":
-        pass
+        product_id = request.query_params.get("product_id")
+        quantity = request.query_params.get("quantity")
+        if product_id is not None and quantity is not None:
+            perfumes = PerfumeBottle.objects.filter(id=product_id)
+            if len(perfumes) > 0:
+                perfume = perfumes[0]
+            else:
+                return Response({"error:": "There is no product with such id"})
+            cart_products = CartProduct.objects.filter(
+                product=perfume, cart=cart[0])
+            if len(cart_products) > 0:
+                cart_product = cart_products[0]
+            else:
+                cart_product = CartProduct.objects.create(
+                    cart=cart[0], product=perfume, quantity=0)
+            print("cart Product is ", cart[0])
+            if int(quantity) + cart_product.quantity <= perfume.quantity:
+                cart_product.quantity = cart_product.quantity + int(quantity)
+                cart_product.save()
+                serializer = CartSerializer(cart[0], many=False)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response({"error": "There is not enough of this product"})
+        return Response({"error": "product_id or quantity has not been provided!"})
+
     elif request.method == "DELETE":
-        pass
+        quantity = request.query_params.get("quantity")
+        product_id = request.query_params.get("product_id")
+
+        if quantity is None and product_id is None:
+            CartProduct.objects.filter(cart=cart[0]).delete()
+            return Response({"result": "Cart has been reset"}, status=status.HTTP_200_OK)
+        elif product_id is not None and quantity is None:
+            perfumes = PerfumeBottle.objects.filter(id=product_id)
+            if len(perfumes) > 0:
+                perfume = perfumes[0]
+            else:
+                return Response({"error:": "There is no product with such id"}, status=status.HTTP_404_NOT_FOUND)
+            CartProduct.objects.filter(cart=cart[0], product=perfume).delete()
+
+        elif product_id is not None and quantity is not None:
+            perfumes = PerfumeBottle.objects.filter(id=product_id)
+            if len(perfumes) > 0:
+                perfume = perfumes[0]
+            else:
+                return Response({"error:": "There is no product with such id"}, status=status.HTTP_404_NOT_FOUND)
+            cartProducts = CartProduct.objects.filter(
+                cart=cart[0], product=perfume)
+
+            if len(cartProducts) > 0:
+                cartProduct = cartProducts[0]
+            else:
+                return Response({"error:": "This product is not in the cart"}, status=status.HTTP_404_NOT_FOUND)
+            if cartProduct.quantity - int(quantity) > 0:
+                cartProduct.quantity = cartProduct.quantity - int(quantity)
+                cartProduct.save()
+            else:
+                cartProduct.delete()
+
+        serializer = CartSerializer(cart[0], many=False)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 @api_view(['GET'])
@@ -100,9 +161,7 @@ def men_perfume(request):
 @permission_classes([])
 def get_perfume(request, id):
 
-
     perfume = PerfumeBottle.objects.get(id=id)
-   
 
     serializer = PerfumeBottleSerializer(perfume, many=False)
     return Response(serializer.data, status=status.HTTP_200_OK)
@@ -218,3 +277,66 @@ class PerfumeListView(ListAPIView):
             perfumes = perfumes.order_by("-rate")
 
         return perfumes
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, ])
+def payment_request(request):
+    cart = Cart.objects.get(user=request.user)
+    print("Cart is", request.user.cart)
+    cart_products = CartProduct.objects.filter(cart=cart)
+    print(len(cart_products))
+    if len(cart_products) > 0:
+        payment_description = {}
+        payment = 0
+        c = 1
+        for cart_product in cart_products:
+            print(cart_product.product.perfume.name)
+            payment_description[str(c)+"-"+cart_product.product.perfume.name] = " X " + str(cart_product.quantity) + " " +    \
+                "with the base price of " + str(cart_product.product.price)
+            payment = payment + (cart_product.quantity *
+                                 cart_product.product.price)
+            c = c+1
+        myobj = {
+            "merchant": "zibal",
+            "amount": math.trunc(payment) * 10,
+            "callbackUrl": "http://127.0.0.1:8000/payment_callback/",
+            "description": json.dumps(payment_description),
+
+        }
+        response = requests.post(
+            "https://gateway.zibal.ir/v1/request", json=myobj)
+        responseDict = json.loads(response.text)
+        if responseDict["result"] == 100:
+            PaymentsTrackId.objects.create(
+                trackId=responseDict["trackId"], user=request.user)
+            return Response({"trackId": responseDict["trackId"]}, status=status.HTTP_200_OK)
+        else:
+            return Response({"message": "Could not process your payment"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    else:
+        return Response({"message": "There no product in your cart!"})
+
+
+@api_view(['GET'])
+@permission_classes([])
+def payment_callback(request):
+    success = request.query_params.get('success')
+    trackId = request.query_params.get('trackId')
+
+    if success is not None:
+
+        if success == "1":
+            print("Here is comes", trackId)
+            if trackId is not None:
+
+                myobj = {
+                    "merchant": "zibal",
+                    "trackId": int(trackId)
+                }
+                response = requests.post(
+                    "https://gateway.zibal.ir/v1/verify", json=myobj)
+                responseDict = json.loads(response.text)
+                print(responseDict)
+
+    return Response()
