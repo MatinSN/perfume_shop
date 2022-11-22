@@ -7,6 +7,7 @@ from rest_framework.authtoken.models import Token
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.contrib.auth.models import User
 import datetime
+from phonenumber_field.modelfields import PhoneNumberField
 import random
 
 BRAND_CATEGORY_CHOICES = (
@@ -91,6 +92,15 @@ class Cart(models.Model):
         return self.user.username
 
 
+class Address(models.Model):
+    name = models.CharField(max_length=30)
+    lastname = models.CharField(max_length=30)
+    state = models.CharField(max_length=30)
+    city = models.CharField(max_length=30)
+    address = models.CharField(max_length=300)
+    phone_number = PhoneNumberField(null=False, blank=False)
+
+
 class CartProduct(models.Model):
     product = models.ForeignKey(
         PerfumeBottle, on_delete=models.CASCADE)
@@ -100,10 +110,6 @@ class CartProduct(models.Model):
 
     def __str__(self):
         return self.cart.user.username
-
-
-# class PaidProducts(models.Model):
-#     products = models.ManyToManyField(CartProduct)
 
 
 class Rating(models.Model):

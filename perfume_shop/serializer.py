@@ -92,6 +92,7 @@ class LoinSerializer(serializers.ModelSerializer):
 
 
 class CartProductSerializer(serializers.ModelSerializer):
+    product = PerfumeBottleSerializer(many=False)
 
     class Meta:
         model = CartProduct

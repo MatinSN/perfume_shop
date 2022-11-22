@@ -195,8 +195,9 @@ def signup(request):
 def login(request):
 
     if request.method == 'POST':
-        username = request.data.dict()['username']
-        password = request.data.dict()['password']
+        print(request.data)
+        username = request.data['username']
+        password = request.data['password']
         user = authenticate(username=username, password=password)
         data = {}
         if user is not None:
@@ -204,10 +205,37 @@ def login(request):
             token = Token.objects.create(user=user)
 
             data['token'] = token.key
+            data['username'] = user.get_username()
+            logged_in_user = User.objects.get(username=data['username'])
+            data['email'] = logged_in_user.email
+
         else:
             data['error'] = "email or password is incorrect"
 
         return Response(data)
+
+
+class BrandListView(ListAPIView):
+    queryset = Brand.objects.all()
+    serializer_class = BrandSerializer
+    authentication_classes = []
+    permission_classes = []
+    pagination_class = PageNumberPagination
+
+    def get_queryset(self):
+
+        brand_type = self.request.query_params.get('brand_type')
+        count = self.request.query_params.get('count')
+        brands = Brand.objects.all()
+        print("Here for category")
+
+        if count is not None:
+            count = int(count)
+            self.pagination_class.page_size = count
+        if brand_type is not None:
+            brands = brands.filter(category=brand_type)
+
+        return brands
 
 
 class PerfumeListView(ListAPIView):

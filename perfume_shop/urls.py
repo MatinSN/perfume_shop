@@ -26,7 +26,7 @@ urlpatterns = [
     path('signup/', views.signup),
     path('login/', views.login),
     path('dummy/', views.dummy_fixer),
-    path('brands/', views.brands),
+    path('brands/', views.BrandListView.as_view()),
     path('perfumes/', views.PerfumeListView.as_view()),
     path('rater/', views.temp_rater),
     path('cart/', views.cart),
