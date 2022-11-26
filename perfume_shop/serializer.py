@@ -3,10 +3,36 @@ import email
 from pyexpat import model
 from tkinter.ttk import Style
 from rest_framework import serializers
-from .models import Perfume, Brand, PerfumeBottle, Cart, Detail, CartProduct
+from .models import Perfume, Brand, PerfumeBottle, Cart, Detail, CartProduct, Address, Rating, Comment
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
+
+
+class UserSerializer2(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('username',)
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    user = UserSerializer2(many=False)
+
+    class Meta:
+        model = Comment
+        fields = ('id', 'comment', 'created_at', 'user')
+
+
+class RatingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Rating
+        fields = '__all__'
+
+
+class AddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Address
+        fields = '__all__'
 
 
 class BrandSerializer(serializers.ModelSerializer):
@@ -27,8 +53,7 @@ class PerfumeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Perfume
-        fields = ('id', 'name', 'description', 'gender', 'brand',
-                  'image', 'image2', 'details')
+        fields = "__all__"
 
 
 class PerfumeBottleSerializer(serializers.ModelSerializer):

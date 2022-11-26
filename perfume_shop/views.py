@@ -1,8 +1,8 @@
 from distutils.log import error
 from lib2to3.pgen2 import token
 from django.http import JsonResponse
-from .models import Perfume, PerfumeBottle, Brand, Rating, Cart, CartProduct, PaymentsTrackId
-from .serializer import PerfumeSerializer, UserSerializer, LoinSerializer, BrandSerializer, PerfumeBottleSerializer, CartSerializer
+from .models import Perfume, PerfumeBottle, Brand, Rating, Cart, CartProduct, PaymentsTrackId, Address, Comment
+from .serializer import PerfumeSerializer, UserSerializer, LoinSerializer, BrandSerializer, PerfumeBottleSerializer, CartSerializer, AddressSerializer, RatingSerializer, CommentSerializer
 from .helpers import men_filter
 import operator
 from rest_framework.response import Response
@@ -161,9 +161,12 @@ def men_perfume(request):
 @permission_classes([])
 def get_perfume(request, id):
 
-    perfume = PerfumeBottle.objects.get(id=id)
+    perfume = PerfumeBottle.objects.filter(id=id)
 
-    serializer = PerfumeBottleSerializer(perfume, many=False)
+    if len(perfume) == 0:
+        return Response({"message": "Could not find the perfume"}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = PerfumeBottleSerializer(perfume[0], many=False)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -188,6 +191,28 @@ def signup(request):
             data = serializer.errors
 
         return Response(data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated, ])
+def address(request):
+
+    if request.method == "GET":
+        user_addresses = Address.objects.filter(user=request.user)
+        serializer = AddressSerializer(user_addresses, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    elif request.method == "POST":
+        name = request.data["name"]
+        lastname = request.data["lastname"]
+        state = request.data["state"]
+        city = request.data["city"]
+        address = request.data["address"]
+        phone_number = request.data["phone_number"]
+        new_address = Address.objects.create(user=request.user,
+                                             name=name, lastname=lastname, state=state, city=city, address=address, phone_number=phone_number)
+        serializer = AddressSerializer(new_address, many=False)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
@@ -273,7 +298,7 @@ class PerfumeListView(ListAPIView):
             self.pagination_class.page_size = count
 
         perfumes = PerfumeBottle.objects.all()
-        if tester is not None:
+        if tester is not None and tester != "Both       ":
             if tester == "false":
                 perfumes = perfumes.filter(tester=False)
             elif tester == "true":
@@ -283,14 +308,14 @@ class PerfumeListView(ListAPIView):
             perfumes = perfumes.filter(
                 perfume__gender=gender)
 
-        if brand is not None:
+        if brand is not None and brand != "":
             perfumes = perfumes.filter(
                 perfume__brand__name__contains=brand)
 
         if category is not None:
             perfumes = perfumes.filter(perfume__brand__category=category)
 
-        if search is not None:
+        if search is not None and search != "":
             perfumes = perfumes.filter(
                 Q(perfume__name__contains=search) | Q(perfume__brand__name__contains=search))
 
@@ -368,3 +393,94 @@ def payment_callback(request):
                 print(responseDict)
 
     return Response()
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated, ])
+def rate_perfume(request):
+
+    product_id = request.query_params.get('product_id')
+    perfumes = PerfumeBottle.objects.filter(id=product_id)
+    if len(perfumes) == 0:
+        return Response({"message": "There is no such perfume with this id"}, status=status.HTTP_404_NOT_FOUND)
+    perfume = perfumes[0]
+
+    if request.method == "GET":
+
+        ratings = Rating.objects.filter(user=request.user, perfume=perfume)
+        if len(ratings) == 0:
+            return Response({"message": "This user hasn't rate this product"}, status=status.HTTP_404_NOT_FOUND)
+
+        rating = ratings[0]
+        serializer = RatingSerializer(rating, many=False)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    elif request.method == "POST":
+
+        rating = request.data.get('rating')
+
+        if rating == None:
+            return Response({"message": "rating must be provided"}, status=status.HTTP_400_BAD_REQUEST)
+        user_pre_rating = Rating.objects.filter(
+            user=request.user, perfume=perfume)
+
+        if len(user_pre_rating) == 0:
+            Rating.objects.create(rating=int(
+                rating), user=request.user, perfume=perfume)
+        else:
+            print("Here for changing the pre rating")
+            user_pre_rating[0].rating = int(rating)
+            user_pre_rating[0].save()
+
+        perfume_ratings = Rating.objects.filter(perfume=perfume)
+
+        sum = 0
+        for rate in perfume_ratings:
+            sum = sum + rate.rating
+        perfume.rate = round(sum/len(perfume_ratings))
+        perfume.save()
+
+        newRating = Rating.objects.get(user=request.user, perfume=perfume)
+
+        serializer = RatingSerializer(newRating, many=False)
+
+        print("rating", rating)
+        return Response({"comment": serializer.data, "perfume_rating": perfume.rate}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([])
+def perfume_comments(request):
+
+    product_id = request.query_params.get('product_id')
+    perfumes = PerfumeBottle.objects.filter(id=product_id)
+    if len(perfumes) == 0:
+        return Response({"message": "There is no such perfume with this id"}, status=status.HTTP_404_NOT_FOUND)
+    perfume = perfumes[0]
+
+    if request.method == "GET":
+        perfume_comments = Comment.objects.filter(perfume=perfume)
+        perfume_comments = perfume_comments.order_by("-created_at")
+        serializer = CommentSerializer(perfume_comments, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated,])
+def add_comment(request):
+
+    product_id = request.query_params.get('product_id')
+    perfumes = PerfumeBottle.objects.filter(id=product_id)
+    if len(perfumes) == 0:
+        return Response({"message": "There is no such perfume with this id"}, status=status.HTTP_404_NOT_FOUND)
+    perfume = perfumes[0]
+
+    if request.method == "POST":
+        comment = request.data.get("comment")
+        if comment is None:
+            return Response({"massage":"comment must be provided"},status=status.HTTP_400_BAD_REQUEST)
+        new_comment = Comment.objects.create(user=request.user,perfume=perfume,comment =comment)
+        serializer = CommentSerializer(new_comment,many=False)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)

@@ -44,6 +44,12 @@ class Perfume(models.Model):
     description = models.CharField(max_length=1000)
     gender = models.CharField(max_length=10, choices=GENDER_TYPES)
     brand = models.ForeignKey(Brand, on_delete=models.CASCADE, null=True)
+    nature = models.CharField(max_length=20, blank=True)
+    olfaction_group = models.CharField(max_length=20, blank=True)
+    perfume_type = models.CharField(max_length=20, blank=True)
+    season = models.CharField(max_length=20, blank=True)
+    persistence = models.CharField(max_length=20, blank=True)
+    dispersal = models.CharField(max_length=20, blank=True)
     image = models.ImageField(upload_to='perfumes',
                               default='perfumes/p1.jpg')
     image2 = models.ImageField(upload_to='perfumes',
@@ -61,11 +67,13 @@ class Detail(models.Model):
 
 
 class PerfumeBottle(models.Model):
+    name = models.CharField(max_length=200, blank=True)
     perfume = models.ForeignKey(Perfume, on_delete=models.CASCADE)
     price = models.FloatField(default=round(random.uniform(
         1000000, 30000000), 2), validators=[MinValueValidator(1000000)])
     size = models.FloatField(default=round(random.uniform(100, 1000), 2),
                              validators=[MinValueValidator(100), MaxValueValidator(1000)])
+    perfumer = models.CharField(max_length=20, blank=True)
     quantity = models.PositiveIntegerField(
         default=random.randint(100, 1000))
     discount = models.PositiveIntegerField(default=random.randint(10, 50))
@@ -93,12 +101,16 @@ class Cart(models.Model):
 
 
 class Address(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=30)
     lastname = models.CharField(max_length=30)
     state = models.CharField(max_length=30)
     city = models.CharField(max_length=30)
     address = models.CharField(max_length=300)
     phone_number = PhoneNumberField(null=False, blank=False)
+
+    def __str__(self):
+        return self.user.username
 
 
 class CartProduct(models.Model):
@@ -116,12 +128,15 @@ class Rating(models.Model):
     perfume = models.ForeignKey(PerfumeBottle, on_delete=models.CASCADE)
     rating = models.IntegerField(default=0)
     user = models.ForeignKey(User, on_delete=models.DO_NOTHING)
-    comment = models.CharField(max_length=500)
-    created_at = models.DateTimeField(default=datetime.datetime.now)
-
+   
     def __str__(self):
         return self.user.username
 
+class Comment(models.Model):
+    comment = models.CharField(max_length=500)
+    perfume = models.ForeignKey(PerfumeBottle, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.DO_NOTHING)
+    created_at = models.DateTimeField(default=datetime.datetime.now)
 
 class PaymentsTrackId(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

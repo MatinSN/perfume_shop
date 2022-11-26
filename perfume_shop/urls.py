@@ -33,7 +33,10 @@ urlpatterns = [
     path('perfume/<str:id>', views.get_perfume),
     path('payment_request/', views.payment_request),
     path('payment_callback/', views.payment_callback),
-
+    path('addresses/', views.address),
+    path('rate_perfume/', views.rate_perfume),
+    path('perfume_comments/', views.perfume_comments),
+    path('add_comment/', views.add_comment),
     # re_path('^perfumes/(?P<username>.+)/$', views.PerfumeListView.as_view()),
 
 
