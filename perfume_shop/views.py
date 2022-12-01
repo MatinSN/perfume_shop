@@ -1,8 +1,13 @@
+from pathlib import Path
+import os
+from django.core.files.uploadedfile import SimpleUploadedFile
+from datetime import timedelta
+from random import randrange
 from distutils.log import error
 from lib2to3.pgen2 import token
 from django.http import JsonResponse
-from .models import Perfume, PerfumeBottle, Brand, Rating, Cart, CartProduct, PaymentsTrackId, Address, Comment
-from .serializer import PerfumeSerializer, UserSerializer, LoinSerializer, BrandSerializer, PerfumeBottleSerializer, CartSerializer, AddressSerializer, RatingSerializer, CommentSerializer
+from .models import Perfume, PerfumeBottle, Brand, Rating, Cart, CartProduct, PaymentsTrackId, Address, Comment, PaidItem
+from .serializer import PerfumeSerializer, UserSerializer, LoinSerializer, BrandSerializer, PerfumeBottleSerializer, CartSerializer, AddressSerializer, RatingSerializer, CommentSerializer, PaymentsTrackIdSerializer
 from .helpers import men_filter
 import operator
 from rest_framework.response import Response
@@ -14,7 +19,8 @@ from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 import random
 from django.db.models import Q
-
+import datetime
+from .utils import add_item_to_cart, delete_cart_item
 from perfume_shop import serializer
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.generics import ListAPIView
@@ -22,6 +28,7 @@ from rest_framework.generics import ListAPIView
 import json
 import math
 import requests
+import datetime
 
 
 def temp(x):
@@ -41,65 +48,39 @@ def cart(request):
     elif request.method == "PUT":
         product_id = request.query_params.get("product_id")
         quantity = request.query_params.get("quantity")
-        if product_id is not None and quantity is not None:
-            perfumes = PerfumeBottle.objects.filter(id=product_id)
-            if len(perfumes) > 0:
-                perfume = perfumes[0]
-            else:
-                return Response({"error:": "There is no product with such id"})
-            cart_products = CartProduct.objects.filter(
-                product=perfume, cart=cart[0])
-            if len(cart_products) > 0:
-                cart_product = cart_products[0]
-            else:
-                cart_product = CartProduct.objects.create(
-                    cart=cart[0], product=perfume, quantity=0)
-            print("cart Product is ", cart[0])
-            if int(quantity) + cart_product.quantity <= perfume.quantity:
-                cart_product.quantity = cart_product.quantity + int(quantity)
-                cart_product.save()
-                serializer = CartSerializer(cart[0], many=False)
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-            else:
-                return Response({"error": "There is not enough of this product"})
-        return Response({"error": "product_id or quantity has not been provided!"})
+        return add_item_to_cart(quantity=quantity, product_id=product_id, user_cart=cart[0])
 
     elif request.method == "DELETE":
         quantity = request.query_params.get("quantity")
         product_id = request.query_params.get("product_id")
 
-        if quantity is None and product_id is None:
-            CartProduct.objects.filter(cart=cart[0]).delete()
-            return Response({"result": "Cart has been reset"}, status=status.HTTP_200_OK)
-        elif product_id is not None and quantity is None:
-            perfumes = PerfumeBottle.objects.filter(id=product_id)
-            if len(perfumes) > 0:
-                perfume = perfumes[0]
-            else:
-                return Response({"error:": "There is no product with such id"}, status=status.HTTP_404_NOT_FOUND)
-            CartProduct.objects.filter(cart=cart[0], product=perfume).delete()
+        return delete_cart_item(quantity=quantity, product_id=product_id, user_cart=cart[0])
 
-        elif product_id is not None and quantity is not None:
-            perfumes = PerfumeBottle.objects.filter(id=product_id)
-            if len(perfumes) > 0:
-                perfume = perfumes[0]
-            else:
-                return Response({"error:": "There is no product with such id"}, status=status.HTTP_404_NOT_FOUND)
-            cartProducts = CartProduct.objects.filter(
-                cart=cart[0], product=perfume)
 
-            if len(cartProducts) > 0:
-                cartProduct = cartProducts[0]
-            else:
-                return Response({"error:": "This product is not in the cart"}, status=status.HTTP_404_NOT_FOUND)
-            if cartProduct.quantity - int(quantity) > 0:
-                cartProduct.quantity = cartProduct.quantity - int(quantity)
-                cartProduct.save()
-            else:
-                cartProduct.delete()
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, ])
+def cart_check(request):
+    request_cart = json.loads(request.data["cart"])
+    user_cart = Cart.objects.get(user=request.user)
+    for item in request_cart:
+        try:
+            perfume = PerfumeBottle.objects.get(id=item["id"])
+        except:
+            return Response({"message": "Perfume not found"})
+        try:
+            cart_item = CartProduct.objects.get(
+                cart=user_cart, product=perfume)
+            if item["quantity"] > cart_item.quantity:
 
-        serializer = CartSerializer(cart[0], many=False)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+                return add_item_to_cart(product_id=item["id"], quantity=item["quantity"]-cart_item.quantity, user_cart=user_cart)
+            if item["quantity"] < cart_item.quantity:
+
+                return delete_cart_item(product_id=item["id"], quantity=cart_item.quantity-item["quantity"], user_cart=user_cart)
+
+        except:
+            return add_item_to_cart(product_id=item["id"], quantity=item["quantity"], user_cart=user_cart)
+
+    return Response()
 
 
 @api_view(['GET'])
@@ -116,14 +97,33 @@ def brands(request):
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+def random_date(start, end):
+    """
+    This function will return a random datetime between two datetime 
+    objects.
+    """
+    delta = end - start
+    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+    random_second = randrange(int_delta)
+    return start + timedelta(seconds=random_second)
+
+
 @api_view(['GET'])
 @permission_classes([])
 def dummy_fixer(request):
 
     perfumes = PerfumeBottle.objects.all()
+
+    d1 = datetime.datetime.strptime('1/1/2020 1:30 PM', '%m/%d/%Y %I:%M %p')
+    d2 = datetime.datetime.strptime('1/1/2022 4:50 AM', '%m/%d/%Y %I:%M %p')
+    BASE_DIR = Path(__file__).resolve().parent.parent
     for perfume in perfumes:
-        perfume.price = round(random.uniform(500000, 20000000), 2)
-        perfume.size = random.randint(100, 1000)
+        perfume.price = round(random.uniform(800000, 20000000), 2)
+        perfume.size = random.randint(200, 700)
+        perfume.rate = random.randint(0, 5)
+        perfume.discount = random.randint(0, 60)
+        perfume.created_at = random_date(d1, d2)
+        
         perfume.save()
     return Response(status=status.HTTP_200_OK)
 
@@ -292,13 +292,18 @@ class PerfumeListView(ListAPIView):
         date_sort = self.request.query_params.get('date_sort')
         count = self.request.query_params.get('count')
         rate_sort = self.request.query_params.get('rate_sort')
+        big_size = self.request.query_params.get('big_zige')
 
         if count is not None:
             count = int(count)
             self.pagination_class.page_size = count
 
         perfumes = PerfumeBottle.objects.all()
-        if tester is not None and tester != "Both       ":
+
+        if big_size is not None and big_size == "true":
+            perfumes = perfumes.filter(size__gte=100)
+
+        if tester is not None and tester != "Both":
             if tester == "false":
                 perfumes = perfumes.filter(tester=False)
             elif tester == "true":
@@ -332,13 +337,14 @@ class PerfumeListView(ListAPIView):
         return perfumes
 
 
-@api_view(['GET'])
+@api_view(['POST'])
 @permission_classes([IsAuthenticated, ])
 def payment_request(request):
     cart = Cart.objects.get(user=request.user)
-    print("Cart is", request.user.cart)
+    address_data = json.loads(request.data["address"])
+
     cart_products = CartProduct.objects.filter(cart=cart)
-    print(len(cart_products))
+
     if len(cart_products) > 0:
         payment_description = {}
         payment = 0
@@ -347,12 +353,12 @@ def payment_request(request):
             print(cart_product.product.perfume.name)
             payment_description[str(c)+"-"+cart_product.product.perfume.name] = " X " + str(cart_product.quantity) + " " +    \
                 "with the base price of " + str(cart_product.product.price)
-            payment = payment + (cart_product.quantity *
-                                 cart_product.product.price)
+            payment = payment + (cart_product.quantity * math.trunc(
+                (cart_product.product.price*((100-cart_product.product.discount)/100))))
             c = c+1
         myobj = {
             "merchant": "zibal",
-            "amount": math.trunc(payment) * 10,
+            "amount": payment * 10,
             "callbackUrl": "http://127.0.0.1:8000/payment_callback/",
             "description": json.dumps(payment_description),
 
@@ -360,9 +366,15 @@ def payment_request(request):
         response = requests.post(
             "https://gateway.zibal.ir/v1/request", json=myobj)
         responseDict = json.loads(response.text)
+        print(response.text)
         if responseDict["result"] == 100:
+            shipping_address = Address.objects.create(
+                user=request.user, name=address_data["name"],
+                lastname=address_data["lastName"], state=address_data["state"],
+                city=address_data["city"], address=address_data["address"],
+                phone_number=address_data["phoneNumber"])
             PaymentsTrackId.objects.create(
-                trackId=responseDict["trackId"], user=request.user)
+                trackId=responseDict["trackId"], user=request.user, shipping_info=shipping_address, status="Not Paid", amount=payment)
             return Response({"trackId": responseDict["trackId"]}, status=status.HTTP_200_OK)
         else:
             return Response({"message": "Could not process your payment"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -390,9 +402,38 @@ def payment_callback(request):
                 response = requests.post(
                     "https://gateway.zibal.ir/v1/verify", json=myobj)
                 responseDict = json.loads(response.text)
-                print(responseDict)
+                if responseDict['result'] == 100 and responseDict['status'] == 1:
+                    payment_track_id = PaymentsTrackId.objects.get(
+                        trackId=trackId)
+                    if payment_track_id.status == "Not Paid":
+                        payment_track_id.status = "Processing"
+                        paid_date = datetime.datetime.strptime(
+                            responseDict["paidAt"], '%Y-%m-%dT%H:%M:%S.%f')
+                        payment_track_id.payment_date = paid_date
+                        payment_track_id.save()
+                        cart = Cart.objects.get(user=payment_track_id.user)
+                        cart_products = CartProduct.objects.filter(cart=cart)
+
+                        for cart_product in cart_products:
+                            PaidItem.objects.create(
+                                product=cart_product.product, payment=payment_track_id, quantity=cart_product.quantity)
+                        cart_products.delete()
 
     return Response()
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, ])
+def orders(request):
+
+    paid_orders = PaymentsTrackId.objects.filter(user=request.user)
+    paid_orders = paid_orders.filter(
+        Q(status='Processing') | Q(status="Sent") | Q(status="Received"))
+    paid_orders = paid_orders.order_by("-payment_date")
+
+    serializer = PaymentsTrackIdSerializer(paid_orders, many=True)
+
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 @api_view(['GET', 'POST'])
@@ -466,8 +507,9 @@ def perfume_comments(request):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+
 @api_view(['POST'])
-@permission_classes([IsAuthenticated,])
+@permission_classes([IsAuthenticated, ])
 def add_comment(request):
 
     product_id = request.query_params.get('product_id')
@@ -479,8 +521,9 @@ def add_comment(request):
     if request.method == "POST":
         comment = request.data.get("comment")
         if comment is None:
-            return Response({"massage":"comment must be provided"},status=status.HTTP_400_BAD_REQUEST)
-        new_comment = Comment.objects.create(user=request.user,perfume=perfume,comment =comment)
-        serializer = CommentSerializer(new_comment,many=False)
+            return Response({"massage": "comment must be provided"}, status=status.HTTP_400_BAD_REQUEST)
+        new_comment = Comment.objects.create(
+            user=request.user, perfume=perfume, comment=comment)
+        serializer = CommentSerializer(new_comment, many=False)
 
         return Response(serializer.data, status=status.HTTP_200_OK)

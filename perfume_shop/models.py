@@ -22,6 +22,7 @@ GENDER_TYPES = (
 )
 
 PAID_ITEMS_STATUS = (
+    ("Not Paid", "Not Paid"),
     ("Processing", "Processing"),
     ("Sent", "Send"),
     ("Received", "Received")
@@ -128,9 +129,10 @@ class Rating(models.Model):
     perfume = models.ForeignKey(PerfumeBottle, on_delete=models.CASCADE)
     rating = models.IntegerField(default=0)
     user = models.ForeignKey(User, on_delete=models.DO_NOTHING)
-   
+
     def __str__(self):
         return self.user.username
+
 
 class Comment(models.Model):
     comment = models.CharField(max_length=500)
@@ -138,12 +140,25 @@ class Comment(models.Model):
     user = models.ForeignKey(User, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField(default=datetime.datetime.now)
 
+
 class PaymentsTrackId(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     trackId = models.BigIntegerField()
+    shipping_info = models.ForeignKey(
+        Address, on_delete=models.DO_NOTHING, null=True)
+    status = models.CharField(
+        max_length=30, choices=PAID_ITEMS_STATUS)
+
+    amount = models.FloatField(default=100)
+
+    payment_date = models.DateField(null=True, blank=True)
+
+    def __str__(self):
+        return self.user.username
 
 
 class PaidItem(models.Model):
-    payment = models.ForeignKey(PaymentsTrackId, on_delete=models.CASCADE)
+    payment = models.ForeignKey(
+        PaymentsTrackId, related_name="orders", on_delete=models.CASCADE)
     product = models.ForeignKey(PerfumeBottle, on_delete=models.CASCADE)
-    status = models.CharField(max_length=30, choices=PAID_ITEMS_STATUS)
+    quantity = models.PositiveIntegerField(default=1)
