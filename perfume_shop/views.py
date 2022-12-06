@@ -1,3 +1,4 @@
+import traceback
 from pathlib import Path
 import os
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -24,6 +25,8 @@ from .utils import add_item_to_cart, delete_cart_item
 from perfume_shop import serializer
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.generics import ListAPIView
+from urllib.request import urlopen
+from django.http import HttpResponse
 
 import json
 import math
@@ -123,7 +126,9 @@ def dummy_fixer(request):
         perfume.rate = random.randint(0, 5)
         perfume.discount = random.randint(0, 60)
         perfume.created_at = random_date(d1, d2)
-        
+
+        perfume.save()
+        perfume.image = "perfumes/p3.jpg"
         perfume.save()
     return Response(status=status.HTTP_200_OK)
 
@@ -223,6 +228,9 @@ def login(request):
         print(request.data)
         username = request.data['username']
         password = request.data['password']
+
+        
+
         user = authenticate(username=username, password=password)
         data = {}
         if user is not None:
@@ -233,11 +241,11 @@ def login(request):
             data['username'] = user.get_username()
             logged_in_user = User.objects.get(username=data['username'])
             data['email'] = logged_in_user.email
+            return Response(data)
 
         else:
-            data['error'] = "email or password is incorrect"
-
-        return Response(data)
+            data['error'] = "username or password is incorrect"
+            return Response(data, status=status.HTTP_404_NOT_FOUND)
 
 
 class BrandListView(ListAPIView):
@@ -359,7 +367,7 @@ def payment_request(request):
         myobj = {
             "merchant": "zibal",
             "amount": payment * 10,
-            "callbackUrl": "http://127.0.0.1:8000/payment_callback/",
+            "callbackUrl": "http://127.0.0.1:3000/callback/",
             "description": json.dumps(payment_description),
 
         }
@@ -392,7 +400,7 @@ def payment_callback(request):
     if success is not None:
 
         if success == "1":
-            print("Here is comes", trackId)
+
             if trackId is not None:
 
                 myobj = {
@@ -418,8 +426,10 @@ def payment_callback(request):
                             PaidItem.objects.create(
                                 product=cart_product.product, payment=payment_track_id, quantity=cart_product.quantity)
                         cart_products.delete()
+                    return Response({"message:payment was successful"},
+                                    status=status.HTTP_200_OK)
 
-    return Response()
+    return Response(status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['GET'])
@@ -450,12 +460,11 @@ def rate_perfume(request):
 
         ratings = Rating.objects.filter(user=request.user, perfume=perfume)
         if len(ratings) == 0:
-            return Response({"message": "This user hasn't rate this product"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"rating": 0}, status=status.HTTP_404_NOT_FOUND)
 
         rating = ratings[0]
-        serializer = RatingSerializer(rating, many=False)
 
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({"rating": rating.rating}, status=status.HTTP_200_OK)
 
     elif request.method == "POST":
 
